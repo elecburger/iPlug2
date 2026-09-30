@@ -355,36 +355,26 @@ void IPlugVST3ProcessorBase::ProcessAudio(ProcessData& data, ProcessSetup& setup
     {
       SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), false);
 
-      if (ins.size() > 1)
+      bool auxInputActive = false;
+      for (int inBus = 0, chanOffset = 0; inBus < data.numInputs; inBus++)
       {
-        if (ins[1].get()->isActive()) // Sidechain is active
+        const bool busActive = inBus < static_cast<int>(ins.size()) && ins[inBus].get()->isActive();
+        const int busChannels = data.inputs[inBus].numChannels;
+
+        if (busActive)
         {
-          mSidechainActive = true;
-          SetChannelConnections(ERoute::kInput, 0, data.inputs[0].numChannels, true);
-          SetChannelConnections(ERoute::kInput, mMaxNChansForMainInputBus, data.inputs[1].numChannels, true);
+          if (inBus > 0)
+            auxInputActive = true;
+          SetChannelConnections(ERoute::kInput, chanOffset, busChannels, true);
+          AttachBuffers(ERoute::kInput, chanOffset, busChannels, data.inputs[inBus], data.numSamples, sampleSize);
         }
-        else
-        {
-          if (mSidechainActive)
-          {
-            ZeroScratchBuffers();
-            mSidechainActive = false;
-          }
-          
-          SetChannelConnections(ERoute::kInput, 0, data.inputs[0].numChannels, true);
-        }
-        
-        AttachBuffers(ERoute::kInput, 0, data.inputs[0].numChannels, data.inputs[0], data.numSamples, sampleSize);
-        
-        if(mSidechainActive)
-          AttachBuffers(ERoute::kInput, mMaxNChansForMainInputBus, data.inputs[1].numChannels, data.inputs[1], data.numSamples, sampleSize);
+
+        chanOffset += busChannels;
       }
-      else
-      {
-        SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), false);
-        SetChannelConnections(ERoute::kInput, 0, data.inputs[0].numChannels, true);
-        AttachBuffers(ERoute::kInput, 0, data.inputs[0].numChannels, data.inputs[0], data.numSamples, sampleSize);
-      }
+
+      if (mSidechainActive && !auxInputActive)
+        ZeroScratchBuffers();
+      mSidechainActive = auxInputActive;
     }
     
     for (int outBus = 0, chanOffset = 0; outBus < data.numOutputs; outBus++)
